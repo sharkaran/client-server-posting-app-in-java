@@ -1,6 +1,7 @@
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.security.*;
 import java.util.*;
 
 public class Server{
@@ -60,10 +61,6 @@ public class Server{
 
     // private Socket socket   = null;
     private ServerSocket server   = null;
-    // private DataInputStream in       =  null;
-    // private DataOutputStream dout;
-    // private ObjectInputStream obin;
-    // private ObjectOutputStream obout;
 
     static ArrayList<ArrayList<String>> messageList = new ArrayList<ArrayList<String>>(); //ArrayList to store Message objects
     static ArrayList<String> message;
@@ -93,21 +90,18 @@ public class Server{
         {
             System.out.println("Waiting for a client ...");
             Socket socket = server.accept();
+            // takes input from the client socket
             DataInputStream in = new DataInputStream(socket.getInputStream());
-            DataOutputStream dout = new DataOutputStream(socket.getOutputStream());
+            DataOutputStream dout = new DataOutputStream(socket.getOutputStream());//sends output to the client socket
 
             String client= in.readUTF();
             System.out.println(client+" just logged in!");
 
 
 
-
-            // takes input from the client socket
-
-
             dout.writeInt(messageList.size());
 
-            System.out.println("sent id");
+            // System.out.println("sent id");
             
             if(messageList.size()>0){
                 for(int i = 0; i<messageList.size(); i++){
@@ -120,8 +114,6 @@ public class Server{
             String input = "";
             // reads message from client until "Bye" is sent
             while(true){
-                // ObjectInputStream obin = new ObjectInputStream(socket.getInputStream());
-                // Message msg = (Message)obin.readObject();
                 if(input.equals("Bye")){
                     System.out.println(client+" just logged out");
                     System.out.println("----------*****------******----------\n\n");
@@ -140,15 +132,23 @@ public class Server{
                         String msgBody = in.readUTF();
                         String timestamp = in.readUTF();
 
-                        message.add(senderId);
-                        message.add(msgBody);
-                        message.add(timestamp);
+                        String signature = in.readUTF();
 
-                        messageList.add(message);
-                        System.out.println(messageList);
-                        System.out.println("sender: "+message.get(0));
-                        System.out.println("message: "+message.get(1));
-                        System.out.println("dateTime: "+message.get(2));  
+                        boolean verified = verifySignature(senderId, timestamp, msgBody, signature);
+
+                        if(verified){
+                            message.add(senderId);
+                            message.add(msgBody);
+                            message.add(timestamp);
+    
+                            messageList.add(message);
+
+                            dout.writeUTF("Post added successfully!");
+                            System.out.println("post added");
+                            
+                        }else{dout.writeUTF("invalid signature");
+                    System.out.println("invalid singature");}
+
 
                     }catch(Exception ignored){}
                     }
@@ -159,24 +159,34 @@ public class Server{
                 i.printStackTrace();
             }
     }
+
+    static boolean verifySignature(String userid, String timestamp, String encMsg, String signature) throws Exception{
+        // Get the key to create the signature
+        PublicKey pub;
+        
+        ObjectInputStream obin = new ObjectInputStream(new FileInputStream(userid + ".pub"));
+        pub = (PublicKey)obin.readObject();
+        obin.close();
+
+
+        //converts arguments into byte array
+        byte[] byteTimeStamp = timestamp.getBytes();
+        byte[] byteEncMsg = encMsg.getBytes();
+        byte[] byteSignature = Base64.getDecoder().decode(signature);
+
+        Signature sig = Signature.getInstance("SHA1withRSA"); 
+        sig.initVerify(pub);
+
+        //concats all byte array
+        byte[] newSig = new byte[byteTimeStamp.length + byteEncMsg.length];
+
+        System.arraycopy(byteTimeStamp, 0, newSig, byteTimeStamp.length, 0);
+        System.arraycopy(byteEncMsg, 0, newSig, byteEncMsg.length, 0);
+
+        sig.update(newSig); 
+
+        return sig.verify(byteSignature);
+    }
+
 }
-
-
-// class Message{
-//     public String senderId;
-//     public String message;
-//     public Date timestamp;
-
-//     public String getSenderId() {
-//         return this.senderId;
-//     }
- 
-//     public Date getTimeStamp() {
-//         return this.timestamp;
-//     }
- 
-//     public String getMessage() {
-//         return this.message;
-//     }
-// }
 

@@ -1,9 +1,6 @@
 import java.io.*;
 import java.net.Socket;
 import java.security.*;
-import java.nio.file.*;
-import java.security.spec.*;
-import java.net.UnknownHostException;
 import java.util.*;
 
 import javax.crypto.BadPaddingException;
@@ -36,40 +33,29 @@ public class Client {
 
         try{
             socket = new Socket(host, port);
-            System.out.println("You are now Connected");
             DataOutputStream dout = new DataOutputStream(socket.getOutputStream());
-            dout.writeUTF(args[2]);
-            System.out.println("sent id");
-            printServerMessages(socket, userId);
-            collectUserMessage(userId);
+            if(validUserId(userId)){
+                System.out.println("You are now Connected");
+                dout.writeUTF(args[2]);
+                printServerMessages(socket, userId);
+                collectUserMessage(userId);
+            }else{System.out.println("Invalid userId");socket.close();}
 
         }catch(Exception e){
             e.printStackTrace();
         }
 
-
-        // String pubKey = Base64.getEncoder().encodeToString(getPulicKey(userId));
-        
-
-        // System.out.println("public key: "+ getPulicKey(userId));
-
-        // Client client = new Client(host, port); 
-
-
-        // boolean sendFlag = true;
-
-
     }
 
-    static void collectUserMessage(String userId){
+    static void collectUserMessage(String userId) throws IOException{
         Scanner sc = new Scanner(System.in);
+        DataOutputStream dout = new DataOutputStream(socket.getOutputStream());
         do{
         System.out.print("do u want to send Post (y/n)?: ");
         String input = sc.nextLine();
 
         if(input.equals("y")||input.equals("yes")||input.equals("Y")){
             try{
-                DataOutputStream dout = new DataOutputStream(socket.getOutputStream());
                 dout.writeUTF(input);
 
                 dout.writeUTF(userId);
@@ -79,29 +65,28 @@ public class Client {
 
                 System.out.print("Enter the message: ");
                 String body = sc.nextLine();
+
+                String encriptedMsg = "";
                 if(recipientId.equals("all")){
-                    dout.writeUTF(body);
-                }else{
-                    String encriptedMsg = encriptMsg(recipientId, body);
-                    dout.writeUTF(encriptedMsg);
-                }
+                    encriptedMsg = body;
+                }else if(validUserId(recipientId)){
+                    encriptedMsg = encriptMsg(recipientId, body);
+                }else{System.out.println("invalid useId");continue;}
+
+                dout.writeUTF(encriptedMsg);
                 
 
-                // Message msg = new Message((String)userId, (String)body);
-                // ArrayList<String> msg = new ArrayList<String>();
-                // msg.add(userId);
-                // msg.add(body);
                 timestamp = new Date();
                 dout.writeUTF(timestamp.toString());
 
-                // msg.add(timestamp.toString());
+                dout.writeUTF(signature(userId, timestamp.toString(), encriptedMsg));
 
-                // ObjectOutputStream obout = new ObjectOutputStream(socket.getOutputStream());
-                // obout.writeObject(msg);
+                DataInputStream dins = new DataInputStream(socket.getInputStream());
+                System.out.println(dins.readUTF());
+
             }catch(Exception ignored){}
         }else{
             try{
-                DataOutputStream dout = new DataOutputStream(socket.getOutputStream());
                 dout.writeUTF("Bye");
             }catch(Exception e){e.printStackTrace();}
             // sendFlag = false;
@@ -136,6 +121,33 @@ public class Client {
         }
     }
 
+    static String signature(String userid, String timestamp, String encMsg ) throws Exception{ //undone
+        // Get the key to create the signature
+        ObjectInputStream obin = new ObjectInputStream(new FileInputStream(userid + ".prv"));
+        prv = (PrivateKey)obin.readObject();
+        obin.close();
+
+
+        //converts arguments into byte array
+        byte[] byteTimeStamp = timestamp.getBytes();
+        byte[] byteEncMsg = encMsg.getBytes();
+
+        Signature sig = Signature.getInstance("SHA1withRSA"); 
+        sig.initSign(prv);
+
+        //concats all byte array
+        byte[] newSig = new byte[byteTimeStamp.length + byteEncMsg.length];
+
+        System.arraycopy(byteTimeStamp, 0, newSig, byteTimeStamp.length, 0);
+        System.arraycopy(byteEncMsg, 0, newSig, byteEncMsg.length, 0);
+
+        sig.update(newSig); 
+
+        byte[] signature = sig.sign();
+
+        return stringIt(signature);
+    }
+
 
     static PublicKey getPubKey(String userId){
         try{
@@ -163,7 +175,7 @@ public class Client {
         return prv;
     }
 
-    static String encriptMsg(String rcid, String msg) throws Exception{
+    static String encriptMsg(String rcid, String msg) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
         byte[] bytemsg = msg.getBytes();
         Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
         PublicKey pubkey = getPubKey(rcid);
@@ -199,6 +211,12 @@ public class Client {
 
     static byte[] byteIt(String input){
         return Base64.getDecoder().decode(input);
+    }
+
+    static boolean validUserId(String userId){
+        File file = new File(userId+".pub");
+
+        return file.exists();
     }
 
 }
