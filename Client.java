@@ -6,15 +6,21 @@ import java.security.spec.*;
 import java.net.UnknownHostException;
 import java.util.*;
 
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
+
 
 public class Client {
     private static Socket socket = null;
-    private BufferedReader bufferedReader = null;
+    // private BufferedReader bufferedReader = null;
     // private DataInputStream dins = null;
     // private DataOutputStream dout = null;
     // private ObjectInputStream obin;
     // public Message msg;
     private static PublicKey pub;
+    private static PrivateKey prv;
     public static Date timestamp;
 
 
@@ -34,7 +40,7 @@ public class Client {
             DataOutputStream dout = new DataOutputStream(socket.getOutputStream());
             dout.writeUTF(args[2]);
             System.out.println("sent id");
-            printServerMessages(socket);
+            printServerMessages(socket, userId);
             collectUserMessage(userId);
 
         }catch(Exception e){
@@ -58,7 +64,7 @@ public class Client {
     static void collectUserMessage(String userId){
         Scanner sc = new Scanner(System.in);
         do{
-        System.out.print("do u want to send msg (y/n)?: ");
+        System.out.print("do u want to send Post (y/n)?: ");
         String input = sc.nextLine();
 
         if(input.equals("y")||input.equals("yes")||input.equals("Y")){
@@ -68,9 +74,18 @@ public class Client {
 
                 dout.writeUTF(userId);
 
-                System.out.println("Enter the message: ");
+                System.out.print("who do u want to send this Post to?(type 'all' if the msg is public): ");
+                String recipientId = sc.nextLine();
+
+                System.out.print("Enter the message: ");
                 String body = sc.nextLine();
-                dout.writeUTF(body);
+                if(recipientId.equals("all")){
+                    dout.writeUTF(body);
+                }else{
+                    String encriptedMsg = encriptMsg(recipientId, body);
+                    dout.writeUTF(encriptedMsg);
+                }
+                
 
                 // Message msg = new Message((String)userId, (String)body);
                 // ArrayList<String> msg = new ArrayList<String>();
@@ -96,24 +111,24 @@ public class Client {
         }while(true);
     }
 
-    static void printServerMessages(Socket s){
+    static void printServerMessages(Socket s, String userId){
         try{
             DataInputStream dins = new DataInputStream(s.getInputStream());
 
             int msgnum = dins.readInt();//receives total number of message from server
-            System.out.println("You have received "+msgnum+" Messages.");
+            System.out.println("You have received "+msgnum+" Posts.");
 
             if(msgnum>0){
                 for(int i =0; i<msgnum; i++){
                     String senderId = dins.readUTF();
-                    String msgBody = dins.readUTF();
+                    String msgBody = decryptMsg(userId, dins.readUTF());
                     String timestamp = dins.readUTF();
 
-                    System.out.println("Message ."+(int)(i+1));
+                    System.out.println("Post ."+(int)(i+1));
                     System.out.println("sender: "+senderId);
                     System.out.println("message: "+msgBody);
                     System.out.println("dateTime: "+timestamp);
-                    System.out.println("----------*****------******----------\n");
+                    System.out.println("----------*****------*****----------\n");
                 }
                 }
         }catch(Exception e){
@@ -121,110 +136,70 @@ public class Client {
         }
     }
 
-    // public Client(String host, int port) {
-    //     try {
-    //         socket = new Socket(host, port);
-    //         System.out.println("You are now Connected");
-    //         // bufferedReader = new BufferedReader(new InputStreamReader(System.in));
-    //         // DataInputStream dins = new DataInputStream(socket.getInputStream());
-    //         // dout = new DataOutputStream(socket.getOutputStream());
-    //     } catch (UnknownHostException e) {
-    //         e.printStackTrace();
-    //     } catch (IOException e) {
-    //         e.printStackTrace();
-    //     }
-        // String line = "";
-        // while (!line.equals("y")) {
-        //     try
-        //     {
-        //         line = bufferedReader.readLine();
-        //         dout.writeUTF(line);
-        //     }
-        //     catch(IOException i)
-        //     {
-        //         System.out.println(i);
-        //     }
-        // }
-    // }
 
-    private static PublicKey getPulicKey(String userid){
+    static PublicKey getPubKey(String userId){
         try{
-            File pubFile = new File(userid+".pub");
+            File pubFile = new File(userId+".pub");
             ObjectInputStream obin = new ObjectInputStream(new FileInputStream(pubFile));
-            PublicKey publicKey = (PublicKey)obin.readObject();
+            pub = (PublicKey)obin.readObject();
             obin.close();
-            System.out.println(publicKey);
-            // FileInputStream file = new FileInputStream(pubFile);
-            // // byte[] keyBytes = Files.readAllBytes(Paths.get(userid+".pub"));
-            // byte[] keyBytes = new byte[(int)pubFile.length()];
-            // // System.out.println(keyBytes);
-            // obin.read(keyBytes);
-            // obin.close();
-            // X509EncodedKeySpec spec = new X509EncodedKeySpec(keyBytes);
-            // // RSAPublicKeySpec spec = new RSAPublicKeySpec(keyBytes);
-            // System.out.println(spec);
-            // KeyFactory kf = KeyFactory.getInstance("RSA");
-
-            // pub = kf.generatePublic(spec);
+            // System.out.println(publicKey);
             
         }catch(Exception ignored){
             // e.printStackTrace();
         }
-
-    //     Security.addProvider(new BouncyCastleProvider());
-
-    //     KeyFactory factory = KeyFactory.getInstance("RSA", "BC");
-    //     try {
-    //         // PrivateKey priv = generatePrivateKey(factory, RESOURCES_DIR
-    //         //         + "id_rsa");
-    //         // LOGGER.info(String.format("Instantiated private key: %s", priv));
-
-    //         PublicKey pub = generatePublicKey(factory,pubFile);
-    //         // LOGGER.info(String.format("Instantiated public key: %s", pub));
-    //     } catch (InvalidKeySpecException e) {
-    //         e.printStackTrace();
-    //     }
-
-    //     try( Reader r = new FileReader(userid+".pub") ){
-    //         KeyPair pair = new JcaPEMKeyConverter().getKeyPair((PEMKeyPair)new PEMParser(r).readObject());
-    //         pub = pair.getPublic();
-    //     }catch(Exception ignored){}
-
-
         return pub;
-    // }
-    // private static PublicKey generatePublicKey(KeyFactory factory,String filename) throws InvalidKeySpecException,
-    // FileNotFoundException, IOException {
-    //     PemFile pemFile = new PemFile(filename);
-    //     byte[] content = pemFile.getPemObject().getContent();
-    //     X509EncodedKeySpec pubKeySpec = new X509EncodedKeySpec(content);
-    //     return factory.generatePublic(pubKeySpec);
-    // }
+
     }
 
-}
+    static PrivateKey getPrivateKey(String userId){
+        try{
+            File privFile = new File(userId+".prv");
+            ObjectInputStream obin = new ObjectInputStream(new FileInputStream(privFile));
+            prv = (PrivateKey) obin.readObject();
 
-class Message{
-    public String senderId;
-    public String message;
-    public Date timestamp;
-
-    public Message(String userId, String message){
-        senderId = userId;
-        message = message;
-        timestamp = new Date();
+            obin.close();
+        }catch(Exception ignored){}
+        return prv;
     }
 
-    public String getSenderId() {
-        return this.senderId;
+    static String encriptMsg(String rcid, String msg) throws Exception{
+        byte[] bytemsg = msg.getBytes();
+        Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+        PublicKey pubkey = getPubKey(rcid);
+        cipher.init(Cipher.ENCRYPT_MODE, pubkey);
+        
+        byte[] encBytemsg = cipher.doFinal(bytemsg);
+        String encMsg = stringIt(encBytemsg);
+
+        return encMsg;
     }
- 
-    public Date getTimeStamp() {
-        return this.timestamp;
+
+    static String decryptMsg(String rcid, String encMsg) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, IllegalBlockSizeException, UnsupportedEncodingException{
+        try{
+            byte[] bytemsg = byteIt(encMsg);
+            Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+            PrivateKey pvkey = getPrivateKey(rcid);
+            cipher.init(Cipher.DECRYPT_MODE,pvkey);
+
+            byte[] dycBytemsg = cipher.doFinal(bytemsg);
+
+            return new String(dycBytemsg, "UTF8");
+
+        }catch(IllegalArgumentException | BadPaddingException e){
+            // e.printStackTrace();
+            System.out.println("this post was not sent you you");
+            return encMsg;
+        }
     }
- 
-    public String getMessage() {
-        return this.message;
+
+    static String stringIt(byte[] input){
+        return Base64.getEncoder().encodeToString(input);
     }
+
+    static byte[] byteIt(String input){
+        return Base64.getDecoder().decode(input);
+    }
+
 }
 
